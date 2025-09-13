@@ -1,0 +1,20 @@
+# локальные ключи/конфиги
+.env
+.env.*
+/etc/skriptonika.env
+
+# локальные базы и артефакты
+data/
+*.db
+minio_data/
+
+# виртуалки/пакеты/кэш
+.venv/
+__pycache__/
+*.pyc
+
+# фронт-артефакты/зависимости
+web/node_modules/
+web/.next/
+web/.env*
+web/.env.*

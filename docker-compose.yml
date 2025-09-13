@@ -1,0 +1,68 @@
+version: "3.9"
+
+services:
+  caddy:
+    image: caddy:2.7.4
+    container_name: caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    extra_hosts:
+      host.docker.internal: host-gateway
+    depends_on:
+      - web
+    networks:
+      - skriptonika_net
+
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+    container_name: web
+    restart: unless-stopped
+    env_file:
+      - ./web/.env.production
+    networks:
+      - skriptonika_net
+
+  backend:
+    build:
+      context: ./backend
+    container_name: backend
+    restart: unless-stopped
+    expose:
+      - "8000"
+    depends_on:
+      - minio
+    networks:
+      - skriptonika_net
+
+  minio:
+    image: quay.io/minio/minio:latest
+    container_name: minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minio
+      MINIO_ROOT_PASSWORD: minio123
+    volumes:
+      - ./minio_data:/data
+    expose:
+      - "9000"
+      - "9001"
+    networks:
+      - skriptonika_net
+
+volumes:
+  caddy_data:
+  caddy_config:
+  minio_data:
+
+networks:
+  skriptonika_net:
+    driver: bridge

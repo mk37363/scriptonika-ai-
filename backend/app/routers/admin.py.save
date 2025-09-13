@@ -1,0 +1,52 @@
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
+import os
+from dotenc import load_dotenv
+
+router = APIRouter()
+
+def _db():
+    conn = psycopg2.connect(
+        dbname=os.getenv("POSTGRES_DB"),
+        user=os.getenv("POSTGRES_USER"),
+        password=os.getenv("POSTGRES_PASSWORD"),
+        host=os.getenv("POSTGRES_HOST"),
+        port=os.getenv("POSTGRES_PORT")
+    )
+    return conn
+
+class LoginIn(BaseModel):
+    email: str
+    password: str
+
+@router.post("/login")
+def login(payload: LoginIn):
+    token = admin_login(payload.email, payload.password)
+    return {"token": token}
+
+@router.post("/kb/create")
+def kb_create(entry: KBEntryIn, sub: str = Depends(require_auth)):
+    conn = _db()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    cur.execute("""
+    INSERT INTO kb_entries (specialty,intent,audience,tone,do,dont,examples,text,status,tags)
+    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id
+    """, (
+        entry.specialty, entry.intent, entry.audience, entry.tone,
+        json.dumps(entry.do, ensure_ascii=False) if entry.do else None,
+        json.dumps(entry.dont, ensure_ascii=False) if entry.dont else None,
+        json.dumps(entry.examples, ensure_ascii=False) if entry.examples else None,
+        entry.text, entry.status,
+        json.dumps(entry.tags, ensure_ascii=False) if entry.tags else None
+    ))
+    rid = cur.fetchone()["id"]
+    conn.commit()
+    cur.close(); conn.close()
+    return {"id": rid}
+
+@router.post("/kb/publish/{entry_id}")
+def kb_publish(entry_id: int, sub: str = Depends(require_auth)):
+    conn = _db(); cur = conn.cursor()
+    cur.execute("UPDATE kb_entries SET status='published' WHERE id=%s", (entry_id,))
+    conn.commit(); cur.close(); conn.close()
+    return {"ok": True}

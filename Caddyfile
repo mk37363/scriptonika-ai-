@@ -1,0 +1,20 @@
+{
+    email marika@khlud.ru
+}
+
+app.scriptonika.ru {
+    encode gzip
+
+    header {
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "no-referrer-when-downgrade"
+        Permissions-Policy "camera=(), microphone=(), geolocation=()"
+        -Server
+    }
+
+    @api path /api/* /api/health /docs* /redoc* /openapi*
+    reverse_proxy @api host.docker.internal:8000
+
+    reverse_proxy web:3000
+}

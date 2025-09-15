@@ -1,8 +1,11 @@
-name: Deploy to Server
+name: Deploy Web
 
 on:
   push:
     branches: [ "main" ]
+    paths:
+      - "web/**"
+      - ".github/workflows/deploy.yml"
 
 jobs:
   deploy:
@@ -12,43 +15,31 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Сборка фронта (опционально: можно собирать на сервере)
-      - name: Setup Node
+      - name: Use Node 18
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: 18
 
-      - name: Build web
+      - name: Install & Build (Next.js)
         working-directory: web
         run: |
           npm ci || npm i
-          echo "NEXT_PUBLIC_API_BASE=https://app.skriptonika.ru/api" > .env.production
           npm run build
 
-      # Деплой по SSH/rsync (нужны secrets)
-      - name: Deploy via rsync
-        uses: burnett01/rsync-deployments@6.0.0
-        with:
-          switches: -avzr --delete
-          path: |
-            backend/
-            web/.next/
-            web/public/
-            web/package.json
-            web/next.config.mjs
-            web/tsconfig.json
-            docker-compose.yml
-          remote_path: /opt/skriptonika/ops
-          remote_host: ${{ secrets.SSH_HOST }}
-          remote_user: ${{ secrets.SSH_USER }}
-          remote_key: ${{ secrets.SSH_KEY }}
+      - name: Prepare SSH key
+        run: |
+          echo "${{ secrets.SSH_KEY }}" > key.pem
+          chmod 600 key.pem
 
-      - name: Restart services
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_KEY }}
-          script: |
-            systemctl restart skriptonika-ai
-            systemctl restart skriptonika-web
+      - name: Rsync .next & public & config
+        run: |
+          RSYNC_RSH="ssh -i key.pem -p ${{ secrets.SSH_PORT || 22 }} -o StrictHostKeyChecking=no"
+          rsync -az --delete \
+            web/.next web/public web/package.json web/next.config.mjs \
+            ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:${{ secrets.DEPLOY_DIR }}/web/
+
+      - name: Restart web service
+        run: |
+          ssh -i key.pem -p ${{ secrets.SSH_PORT || 22 }} -o StrictHostKeyChecking=no \
+          ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
+          "sudo systemctl restart skriptonika-web && sudo systemctl status skriptonika-web --no-pager -l"

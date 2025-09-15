@@ -1,0 +1,54 @@
+name: Deploy to Server
+
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Сборка фронта (опционально: можно собирать на сервере)
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build web
+        working-directory: web
+        run: |
+          npm ci || npm i
+          echo "NEXT_PUBLIC_API_BASE=https://app.skriptonika.ru/api" > .env.production
+          npm run build
+
+      # Деплой по SSH/rsync (нужны secrets)
+      - name: Deploy via rsync
+        uses: burnett01/rsync-deployments@6.0.0
+        with:
+          switches: -avzr --delete
+          path: |
+            backend/
+            web/.next/
+            web/public/
+            web/package.json
+            web/next.config.mjs
+            web/tsconfig.json
+            docker-compose.yml
+          remote_path: /opt/skriptonika/ops
+          remote_host: ${{ secrets.SSH_HOST }}
+          remote_user: ${{ secrets.SSH_USER }}
+          remote_key: ${{ secrets.SSH_KEY }}
+
+      - name: Restart services
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            systemctl restart skriptonika-ai
+            systemctl restart skriptonika-web
